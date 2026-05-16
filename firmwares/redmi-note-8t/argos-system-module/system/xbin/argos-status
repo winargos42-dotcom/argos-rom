@@ -1,0 +1,53 @@
+#!/system/bin/sh
+#===============================================================================
+#  ARGOS Status — system-level diagnostic
+#===============================================================================
+
+echo "═══════════════════════════════════════════════════════════════"
+echo "   ARGOS Mobile System Status"
+echo "═══════════════════════════════════════════════════════════════"
+
+# Device
+echo "Device   : $(getprop ro.product.device)"
+echo "Android  : $(getprop ro.build.version.release) ($(getprop ro.build.version.security_patch))"
+echo "Kernel   : $(uname -r)"
+
+# Root
+echo ""
+echo "--- ROOT ---"
+if su -c 'id' 2>/dev/null | grep -q 'uid=0'; then
+    echo "Root     : ✅ uid=0"
+    echo "Magisk   : $(ls /data/adb/magisk 2>/dev/null && echo installed || echo not found)"
+else
+    echo "Root     : ❌ not available"
+fi
+
+# Network
+echo ""
+echo "--- NETWORK ---"
+ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print "WiFi IP  : " $2}'
+ip addr show rmnet_data0 2>/dev/null | grep 'inet ' | awk '{print "Mobile IP: " $2}'
+
+# USB
+echo ""
+echo "--- USB OTG ---"
+lsusb 2>/dev/null | head -10 || echo "lsusb: no devices or missing"
+echo "TTY: $(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | tr '\n' ' ')"
+echo "HID: $(ls /dev/hidraw* 2>/dev/null | tr '\n' ' ')"
+
+# CAN
+echo ""
+echo "--- CAN ---"
+ls /sys/class/net/can* 2>/dev/null | while read c; do
+    echo "CAN: $(basename $c)"
+done
+
+# ARGOS Services
+echo ""
+echo "--- ARGOS SERVICES ---"
+pgrep -f frida-server >/dev/null 2>&1 && echo "frida-server : running" || echo "frida-server : stopped"
+[ -f /data/local/tmp/argos/service.marker ] && echo "sys-module   : loaded" || echo "sys-module   : not loaded"
+[ -f /data/local/tmp/argos/postfs.marker ] && echo "post-fs-data : done"   || echo "post-fs-data : missing"
+
+echo ""
+echo "═══════════════════════════════════════════════════════════════"

@@ -1,0 +1,126 @@
+steps:
+  # Шаг 1: Подготовка ARGOS overlay структуры
+  - name: 'ubuntu'
+    id: 'prepare-overlay'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        apt-get update -qq && apt-get install -y -qq zip unzip wget curl python3 adb git 2>/dev/null
+        mkdir -p /workspace/argos_rom/META-INF/com/google/android
+        mkdir -p /workspace/argos_rom/system/xbin
+        mkdir -p /workspace/argos_rom/data/adb/magisk
+        mkdir -p /workspace/argos_rom/data/adb/modules/argos-system/system/xbin
+
+        # ARGOS system utilities
+        cat > /workspace/argos_rom/system/xbin/argos-status << 'SH'
+        #!/system/bin/sh
+        echo "ARGOS Universal OS v2.1.4"
+        echo "Device: Redmi Note 8T (ginkgo)"
+        echo "ARGOS P2P: $(getprop argos.p2p.status 2>/dev/null || echo inactive)"
+        SH
+        chmod +x /workspace/argos_rom/system/xbin/argos-status
+
+        cat > /workspace/argos_rom/system/xbin/argos-bridge << 'SH'
+        #!/system/bin/sh
+        # ARGOS Bridge - connects device to ARGOS network
+        BRAIN_URL="${ARGOS_BRAIN_URL:-https://brain-pc.argosssss.win}"
+        curl -s "$BRAIN_URL/brain/register" -H "Content-Type: application/json" \
+          -d "{\"node_id\":\"argos-phone\",\"address\":\"$(ip route get 1 | awk '{print $7;exit}')\",\"capabilities\":[\"android\",\"sensors\",\"camera\"]}" 2>/dev/null
+        echo "Connected to ARGOS network"
+        SH
+        chmod +x /workspace/argos_rom/system/xbin/argos-bridge
+
+        echo "✅ Overlay структура создана"
+
+  # Шаг 2: Magisk модуль ARGOS
+  - name: 'ubuntu'
+    id: 'build-magisk-module'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        MOD=/workspace/argos_rom/data/adb/modules/argos-system
+
+        cat > $MOD/module.prop << 'EOF'
+        id=argos-system
+        name=ARGOS Universal OS System Module
+        version=v2.1.4
+        versionCode=214
+        author=SiG/AvA
+        description=ARGOS Universal OS - AI ecosystem integration module
+        EOF
+
+        # Скрипты инициализации
+        cat > $MOD/service.sh << 'SH'
+        #!/system/bin/sh
+        # ARGOS startup service
+        sleep 10
+        # Регистрируемся в ARGOS P2P сети
+        /system/xbin/argos-bridge &
+        # Запускаем ARGOS mobile agent если Termux установлен
+        su -c "am broadcast -a com.termux.app.ACTION_RUN_SCRIPT --es com.termux.app.SCRIPT_PATH ~/argos-mobile/scripts/argos_agent.py" 2>/dev/null &
+        SH
+        chmod +x $MOD/service.sh
+
+        # post-fs-data для настройки прав
+        cat > $MOD/post-fs-data.sh << 'SH'
+        #!/system/bin/sh
+        chmod +x /system/xbin/argos-*
+        SH
+
+        echo "✅ Magisk модуль создан"
+
+  # Шаг 3: Создаём flashable ZIP
+  - name: 'ubuntu'
+    id: 'create-flashable-zip'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        apt-get install -y -qq zip 2>/dev/null
+
+        # updater-script
+        cat > /workspace/argos_rom/META-INF/com/google/android/updater-script << 'EOF'
+        ui_print("╔══════════════════════════════════════╗");
+        ui_print("║     ARGOS Universal OS v2.1.4        ║");
+        ui_print("║     Overlay for Redmi Note 8T        ║");
+        ui_print("╚══════════════════════════════════════╝");
+        ui_print(" ");
+        ui_print("Installing ARGOS system utilities...");
+        package_extract_dir("system", "/system");
+        ui_print("Installing ARGOS Magisk module...");
+        package_extract_dir("data", "/data");
+        set_perm_recursive(0, 0, 0755, 0644, "/system/xbin");
+        set_perm(0, 0, 0755, "/system/xbin/argos-status");
+        set_perm(0, 0, 0755, "/system/xbin/argos-bridge");
+        ui_print(" ");
+        ui_print("✅ ARGOS installed successfully!");
+        ui_print("Connect to ARGOS network: /system/xbin/argos-bridge");
+        EOF
+
+        # update-binary (минимальный)
+        printf '#!/sbin/sh\necho 3 > /proc/self/fd/1\nunzip -o "$ZIPFILE" updater-script -d /tmp\nsh /tmp/updater-script\n' > /workspace/argos_rom/META-INF/com/google/android/update-binary
+
+        # Создаём ZIP
+        cd /workspace/argos_rom
+        zip -r /workspace/ARGOS_v2.1.4_overlay_ginkgo.zip . -x "*.DS_Store"
+
+        SIZE=$(du -sh /workspace/ARGOS_v2.1.4_overlay_ginkgo.zip | cut -f1)
+        echo "✅ ROM ZIP создан: $SIZE"
+        ls -la /workspace/*.zip
+
+  # Шаг 4: Загружаем в GCS
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'upload-to-gcs'
+    entrypoint: 'gcloud'
+    args:
+      - 'storage'
+      - 'cp'
+      - '/workspace/ARGOS_v2.1.4_overlay_ginkgo.zip'
+      - 'gs://argosssss/rom/ARGOS_v2.1.4_overlay_ginkgo.zip'
+
+timeout: '1200s'
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY

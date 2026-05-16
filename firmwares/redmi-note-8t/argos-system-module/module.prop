@@ -1,0 +1,6 @@
+id=argos-system
+ame=ARGOS Mobile System Core
+version=v2.0
+versionCode=2000
+author=ARGOS Auto-Builder
+description=System-level ARGOS toolkit for Redmi Note 8T. USB/CAN/UART permissions, auto-start bridges, root utilities. Mounts to /system/xbin.

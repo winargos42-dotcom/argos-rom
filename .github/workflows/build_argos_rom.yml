@@ -1,0 +1,154 @@
+name: ARGOS Multi-Tool ROM Build
+
+on:
+  push:
+    branches: [ main, argos-rom ]
+  workflow_dispatch:
+    inputs:
+      device:
+        description: 'Device codename'
+        required: true
+        default: 'ginkgo'
+        type: string
+      lineage_branch:
+        description: 'LineageOS branch'
+        required: true
+        default: 'lineage-21.0'
+        type: string
+
+env:
+  DEVICE: ${{ github.event.inputs.device || 'ginkgo' }}
+  LINEAGE_BRANCH: ${{ github.event.inputs.lineage_branch || 'lineage-21.0' }}
+  ROM_NAME: ARGOS-ROM
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    
+    steps:
+    - name: Maximize build space
+      uses: easimon/maximize-build-space@master
+      with:
+        root-reserve-mb: 512
+        swap-size-mb: 1024
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+
+    - name: Checkout ARGOS ROM sources
+      uses: actions/checkout@v4
+      with:
+        path: argos-rom
+
+    - name: Setup build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git git-lfs repo \
+          bc bison build-essential ccache curl flex g++-multilib \
+          gcc-multilib git gnupg gperf imagemagick lib32ncurses-dev \
+          lib32readline-dev lib32z1-dev libelf-dev liblz4-tool \
+          libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop \
+          pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+          libwxgtk3.2-dev openjdk-17-jdk python3 python3-pip
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
+        git config --global user.email "argos@build.local"
+        git config --global user.name "ARGOS Builder"
+
+    - name: Initialize LineageOS manifest
+      run: |
+        mkdir -p ~/lineageos && cd ~/lineageos
+        repo init -u https://github.com/LineageOS/android.git -b ${{ env.LINEAGE_BRANCH }} --git-lfs --no-clone-bundle
+
+    - name: Add ARGOS device manifests
+      run: |
+        mkdir -p ~/lineageos/.repo/local_manifests
+        cat > ~/lineageos/.repo/local_manifests/argos_ginkgo.xml << 'MANIFEST'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <manifest>
+          <project name="LineageOS/android_device_xiaomi_ginkgo" path="device/xiaomi/ginkgo" remote="github" revision="lineage-21" />
+          <project name="LineageOS/android_device_xiaomi_sm6150-common" path="device/xiaomi/sm6150-common" remote="github" revision="lineage-21" />
+          <project name="LineageOS/android_kernel_xiaomi_ginkgo" path="kernel/xiaomi/ginkgo" remote="github" revision="lineage-21" />
+          <project name="LineageOS/android_vendor_xiaomi_ginkgo" path="vendor/xiaomi/ginkgo" remote="github" revision="lineage-21" />
+          <project name="LineageOS/android_hardware_xiaomi" path="hardware/xiaomi" remote="github" revision="lineage-21" />
+        </manifest>
+        MANIFEST
+
+    - name: Sync LineageOS source
+      run: |
+        cd ~/lineageos
+        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --optimized-fetch --prune
+      timeout-minutes: 120
+
+    - name: Copy ARGOS overlay
+      run: |
+        cp -r ${{ github.workspace }}/argos-rom/device/xiaomi/ginkgo/argos ~/lineageos/device/xiaomi/ginkgo/
+        cat >> ~/lineageos/device/xiaomi/ginkgo/device.mk << 'EOF'
+        # ARGOS Multi-Tool Overlay
+        $(call inherit-product, device/xiaomi/ginkgo/argos/device.mk)
+        EOF
+
+    - name: Apply ARGOS kernel patches
+      run: |
+        cd ~/lineageos/kernel/xiaomi/ginkgo
+        if [ -f ../../device/xiaomi/ginkgo/argos/boot/argos-kernel.patch ]; then
+          patch -p1 < ../../device/xiaomi/ginkgo/argos/boot/argos-kernel.patch || true
+        fi
+        # Enable USB Serial + CAN in defconfig
+        if [ -f arch/arm64/configs/ginkgo_defconfig ]; then
+          echo "CONFIG_USB_SERIAL=y" >> arch/arm64/configs/ginkgo_defconfig
+          echo "CONFIG_USB_SERIAL_CH341=y" >> arch/arm64/configs/ginkgo_defconfig
+          echo "CONFIG_USB_SERIAL_FTDI_SIO=y" >> arch/arm64/configs/ginkgo_defconfig
+          echo "CONFIG_USB_SERIAL_CP210X=y" >> arch/arm64/configs/ginkgo_defconfig
+          echo "CONFIG_USB_SERIAL_PL2303=y" >> arch/arm64/configs/ginkgo_defconfig
+          echo "CONFIG_CAN=y" >> arch/arm64/configs/ginkgo_defconfig
+          echo "CONFIG_CAN_MCP251X=y" >> arch/arm64/configs/ginkgo_defconfig
+        fi
+
+    - name: Setup ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        max-size: 10G
+        key: lineageos-21-${{ env.DEVICE }}
+
+    - name: Build ROM
+      run: |
+        cd ~/lineageos
+        source build/envsetup.sh
+        lunch lineage_${{ env.DEVICE }}-userdebug
+        mka bacon -j$(nproc --all)
+      timeout-minutes: 240
+
+    - name: Upload ROM artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.ROM_NAME }}-${{ env.DEVICE }}-${{ github.run_number }}
+        path: |
+          ~/lineageos/out/target/product/${{ env.DEVICE }}/*.zip
+          ~/lineageos/out/target/product/${{ env.DEVICE }}/boot.img
+        retention-days: 7
+
+    - name: Create Release
+      if: github.event_name == 'workflow_dispatch'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ env.ROM_NAME }}-${{ env.DEVICE }}-v1.0.${{ github.run_number }}
+        name: ARGOS ROM v1.0 for ${{ env.DEVICE }} (${{ github.run_number }})
+        body: |
+          ARGOS Multi-Tool ROM build for ${{ env.DEVICE }}
+          Based on LineageOS ${{ env.LINEAGE_BRANCH }}
+          
+          Pre-installed:
+          - Magisk ARGOS system module (5 xbin tools)
+          - USB Serial support (CH340/FTDI/CP210x/PL2303)
+          - CAN bus support (MCP2515)
+          - 24 Python scripts for hardware hacking
+          - Russian locale (ru-RU)
+          
+          Flash via TWRP: Install zip, reboot.
+        files: |
+          ~/lineageos/out/target/product/${{ env.DEVICE }}/*.zip

@@ -1,0 +1,16 @@
+#!/system/bin/sh
+#===============================================================================
+#  ARGOS Bridge Launcher (system wrapper)
+#  Запускает ARGOS Bridge через Termux Python если доступен
+#===============================================================================
+TERMUX_PYTHON="/data/data/com.termux/files/usr/bin/python3"
+BRIDGE_SCRIPT="/data/data/com.termux/files/home/argos-mobile/scripts/argos_bridge.py"
+
+if [ -f "$TERMUX_PYTHON" ] && [ -f "$BRIDGE_SCRIPT" ]; then
+    export ARGOS_BRAIN_HOST="${ARGOS_BRAIN_HOST:-192.168.1.53}"
+    export ARGOS_BRAIN_PORT="${ARGOS_BRAIN_PORT:-5001}"
+    su -c "PATH=/data/data/com.termux/files/usr/bin:$PATH $TERMUX_PYTHON $BRIDGE_SCRIPT" &
+    echo "[ARGOS] Bridge started PID: $!"
+else
+    echo "[ARGOS] Bridge not available — install Termux bootstrap first"
+fi

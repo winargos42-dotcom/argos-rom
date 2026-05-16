@@ -1,0 +1,53 @@
+#!/sbin/sh
+# ARGOS Multi-Tool ROM Flashable Zip
+# update-binary for TWRP
+
+OUTFD="$2"
+ZIP="$3"
+
+ui_print() {
+    echo "ui_print $1" >> /proc/self/fd/$OUTFD
+    echo "ui_print" >> /proc/self/fd/$OUTFD
+}
+
+tmp=/tmp/argos_rom
+rm -rf $tmp
+mkdir -p $tmp
+
+ui_print "========================================"
+ui_print "       ARGOS MULTI-TOOL ROM v1.0      "
+ui_print "       by ARGOS Team | 2026-05-14     "
+ui_print "========================================"
+ui_print "Device: Redmi Note 8T (ginkgo)"
+ui_print "Base: LineageOS 21 (Android 14)"
+ui_print "========================================"
+
+ui_print "[1/5] Extracting ARGOS system tools..."
+unzip -o "$ZIP" "system/*" -d /
+chmod 0755 /system/xbin/argos-*
+
+ui_print "[2/5] Installing init scripts..."
+unzip -o "$ZIP" "system/etc/init.d/*" -d /
+chmod 0755 /system/etc/init.d/99argos
+
+ui_print "[3/5] Installing Magisk ARGOS module..."
+mkdir -p /data/adb/modules/argos-system
+unzip -o "$ZIP" "data/adb/modules/argos-system/*" -d /
+chmod -R 0755 /data/adb/modules/argos-system
+
+ui_print "[4/5] Installing Python scripts..."
+mkdir -p /data/local/argos/scripts
+unzip -o "$ZIP" "data/local/argos/*" -d /
+chmod 0755 /data/local/argos/scripts/*.py
+chmod 0755 /data/local/argos/scripts/*.sh
+
+ui_print "[5/5] Applying Russian locale..."
+settings put secure locale_preferences ru-RU,en-US 2>/dev/null || true
+
+ui_print "========================================"
+ui_print "ARGOS ROM installed successfully!"
+ui_print "Reboot to activate all components."
+ui_print "========================================"
+
+rm -rf $tmp
+exit 0

@@ -1,0 +1,51 @@
+#!/system/bin/sh
+#===============================================================================
+#  ARGOS Colibri — KolibriOS + ColibriAsmEngine wrapper (system level)
+#===============================================================================
+TERMUX_PREFIX="/data/data/com.termux/files/usr"
+TERMUX_HOME="/data/data/com.termux/files/home"
+
+if [ "$(id -u)" != "0" ]; then
+    echo "Requires root. Run: su -c 'argos-colibri $*'"
+    exit 1
+fi
+
+PYTHON="$TERMUX_PREFIX/bin/python"
+COLIBRI_CLI="$TERMUX_HOME/argos-kolibri/colibri/colibri_cli.py"
+KOLIBRI_LAUNCH="$TERMUX_HOME/argos-kolibri/kolibri-os.sh"
+KOLIBRI_STOP="$TERMUX_HOME/argos-kolibri/kolibri-stop.sh"
+
+case "${1:-status}" in
+    status|asm-status|статус-asm)
+        echo "[ARGOS Colibri] Status"
+        [ -f "$TERMUX_HOME/argos-kolibri/images/kolibri.img" ] && echo "  Image: ✅" || echo "  Image: ❌"
+        [ -f "$TERMUX_PREFIX/bin/qemu-system-i386" ] && echo "  QEMU i386: ✅" || echo "  QEMU i386: ❌"
+        [ -f "$COLIBRI_CLI" ] && echo "  ColibriAsmEngine: ✅" || echo "  ColibriAsmEngine: ❌"
+        ;;
+    start)
+        echo "[ARGOS Colibri] Starting KolibriOS..."
+        su -c "bash $KOLIBRI_LAUNCH" &
+        echo "[OK] VNC on :5901"
+        ;;
+    stop)
+        su -c "bash $KOLIBRI_STOP"
+        ;;
+    asm|assemble|ассемблировать)
+        shift; su -c "$PYTHON $COLIBRI_CLI asm '$*'"
+        ;;
+    disasm|disassemble|дизассемблировать)
+        shift; su -c "$PYTHON $COLIBRI_CLI disasm '$*'"
+        ;;
+    file|assemble-file|ассемблировать-файл)
+        shift; su -c "$PYTHON $COLIBRI_CLI file '$*'"
+        ;;
+    watch)
+        shift; su -c "$PYTHON $COLIBRI_CLI watch '$*'"
+        ;;
+    watch-stop)
+        su -c "$PYTHON $COLIBRI_CLI watch-stop"
+        ;;
+    *)
+        echo "Usage: argos-colibri [status|start|stop|asm|disasm|file|watch|watch-stop]"
+        ;;
+esac

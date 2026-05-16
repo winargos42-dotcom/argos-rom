@@ -1,0 +1,39 @@
+# ARGOS Multi-Tool ROM Flashable Zip
+# For Redmi Note 8T (ginkgo/willow) on LOS 21/Android 14
+
+ui_print("========================================");
+ui_print("       ARGOS MULTI-TOOL ROM v1.0      ");
+ui_print("       by ARGOS Team | 2026-05-14     ");
+ui_print("========================================");
+ui_print("Device: Redmi Note 8T (ginkgo)");
+ui_print("Base: LineageOS 21 (Android 14)");
+ui_print("========================================");
+
+# Mount system
+mount("ext4", "EMMC", "/dev/block/bootdevice/by-name/system", "/system");
+
+ui_print("[1/5] Installing ARGOS system tools...");
+package_extract_dir("system/xbin", "/system/xbin");
+set_perm_recursive(0, 0, 0755, 0755, "/system/xbin");
+
+ui_print("[2/5] Installing init scripts...");
+package_extract_dir("system/etc/init.d", "/system/etc/init.d");
+set_perm_recursive(0, 0, 0755, 0755, "/system/etc/init.d");
+
+ui_print("[3/5] Installing Magisk ARGOS module...");
+package_extract_dir("data/adb/modules/argos-system", "/data/adb/modules/argos-system");
+set_perm_recursive(0, 0, 0755, 0755, "/data/adb/modules/argos-system");
+
+ui_print("[4/5] Installing Python scripts...");
+package_extract_dir("data/local/argos", "/data/local/argos");
+set_perm_recursive(1000, 1000, 0755, 0644, "/data/local/argos");
+
+ui_print("[5/5] Russian locale configuration...");
+run_program("/system/bin/settings", "put", "secure", "locale_preferences", "ru-RU,en-US");
+
+ui_print("========================================");
+ui_print("ARGOS ROM installed successfully!");
+ui_print("Reboot to activate all components.");
+ui_print("========================================");
+
+unmount("/system");

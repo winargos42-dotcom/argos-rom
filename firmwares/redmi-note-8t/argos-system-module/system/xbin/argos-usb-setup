@@ -1,0 +1,46 @@
+#!/system/bin/sh
+#===============================================================================
+#  ARGOS USB Setup — права на USB serial + bus
+#===============================================================================
+LOG="/data/local/tmp/argos-usb.log"
+exec 1>>"$LOG" 2>&1
+
+echo "[$(date)] argos-usb-setup started"
+
+# TTY USB/ACM
+for dev in /dev/ttyUSB* /dev/ttyACM* /dev/ttyCH340*; do
+    [ -e "$dev" ] || continue
+    chmod 666 "$dev"
+    chown root:root "$dev"
+    echo "  + $dev"
+done
+
+# USB bus devices
+if [ -d /dev/bus/usb ]; then
+    chmod 755 /dev/bus/usb
+    for bus in /dev/bus/usb/*; do
+        [ -d "$bus" ] || continue
+        chmod 755 "$bus"
+        for dev in "$bus"/*; do
+            [ -c "$dev" ] || continue
+            chmod 666 "$dev"
+            echo "  + $dev"
+        done
+    done
+fi
+
+# CAN
+for dev in /sys/class/net/can*; do
+    [ -e "$dev" ] || continue
+    chmod 666 "$dev" 2>/dev/null || true
+    echo "  + CAN $(basename $dev)"
+done
+
+# HIDRAW (for some programmers)
+for dev in /dev/hidraw*; do
+    [ -e "$dev" ] || continue
+    chmod 666 "$dev"
+    echo "  + $dev"
+done
+
+echo "[$(date)] done"

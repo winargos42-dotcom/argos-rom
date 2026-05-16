@@ -1,0 +1,35 @@
+#!/system/bin/sh
+#===============================================================================
+#  ARGOS CAN Up — поднять CAN интерфейс
+#===============================================================================
+IFACE="${1:-can0}"
+BITRATE="${2:-500000}"
+
+if [ "$(id -u)" != "0" ]; then
+    echo "Requires root. Run: su -c 'argos-can-up $IFACE $BITRATE'"
+    exit 1
+fi
+
+echo "[ARGOS] Bringing up $IFACE @ ${BITRATE}bps"
+
+# Load CAN modules if not loaded
+modprobe can 2>/dev/null || true
+modprobe can_raw 2>/dev/null || true
+modprobe can_bcm 2>/dev/null || true
+
+# iproute2 / busybox ip
+if command -v ip >/dev/null 2>&1; then
+    ip link set "$IFACE" down 2>/dev/null || true
+    ip link set "$IFACE" type can bitrate "$BITRATE" 2>/dev/null || {
+        echo "[ERR] ip link set type can failed — kernel may lack CAN support"
+        exit 1
+    }
+    ip link set "$IFACE" up
+    ip -details link show "$IFACE"
+else
+    echo "[ERR] ip (iproute2) not found"
+    echo "[HINT] Install Termux: pkg install iproute2"
+    exit 1
+fi
+
+echo "[ARGOS] $IFACE up"

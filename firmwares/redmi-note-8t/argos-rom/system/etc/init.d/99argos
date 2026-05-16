@@ -1,0 +1,43 @@
+#!/system/bin/sh
+# ARGOS Multi-Tool System Init Script
+# Runs on every boot after Magisk
+
+export PATH=/system/xbin:/system/bin:/vendor/bin:$PATH
+export LANG=ru_RU.UTF-8
+
+LOG=/data/local/tmp/argos_boot.log
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [ARGOS] $1" | tee -a $LOG
+}
+
+log "ARGOS System Init started"
+
+# Create ARGOS directories
+mkdir -p /data/local/argos/{scripts,logs,images,dumps}
+chmod -R 777 /data/local/argos
+
+# Fix USB OTG permissions
+chmod 666 /dev/bus/usb/*/* 2>/dev/null || true
+
+# Enable USB serial adapters
+for dev in /dev/ttyUSB* /dev/ttyACM*; do
+    [ -e "$dev" ] && chmod 666 "$dev" && log "Serial $dev ready"
+done
+
+# CAN interface setup (if adapter present)
+if [ -e /dev/can0 ]; then
+    ip link set can0 up type can bitrate 500000 2>/dev/null || true
+    log "CAN interface can0 up at 500kbps"
+fi
+
+# Bluetooth LE permissions
+chmod 666 /dev/rfkill 2>/dev/null || true
+
+# Start ARGOS bridge if configured
+if [ -f /data/local/argos/config/bridge.conf ]; then
+    nohup /system/xbin/argos-bridge > /dev/null 2>&1 &amp;
+    log "ARGOS bridge started"
+fi
+
+log "ARGOS System Init complete"

@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir anthropic httpx uvicorn fastapi
+
+COPY . .
+
+ENV ARGOS_ENV=cloud
+ENV PORT=8080
+
+EXPOSE 8080
+
+CMD ["python", "-m", "uvicorn", "src.mcp_api_standalone:app", "--host", "0.0.0.0", "--port", "8080"]
